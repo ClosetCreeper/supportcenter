@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>OneLogin Demo</title>
+</head>
+<body>
+  <div id="app">
+    <button id="loginBtn">Login</button>
+    <div id="welcome" style="display:none;">
+      <h1>HEY, <span id="name"></span>!</h1>
+      <button id="logoutBtn">Logout</button>
+    </div>
+  </div>
+
+  <script>
+    const clientId = "YOUR_CLIENT_ID";
+    const issuer = "https://YOUR-ONELOGIN-URL.onelogin.com/oidc/2";
+    const redirectUri = window.location.origin + window.location.pathname;
+    const authEndpoint = issuer + "/auth";
+    const tokenEndpoint = issuer + "/token";
+
+    function generateRandomString() {
+      const array = new Uint32Array(28);
+      window.crypto.getRandomValues(array);
+      return Array.from(array, dec => ('0' + dec.toString(16)).substr(-2)).join('');
+    }
+
+    async function sha256(plain) {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(plain);
+      const hash = await crypto.subtle.digest('SHA-256', data);
+      return btoa(String.fromCharCode(...new Uint8Array(hash)))
+        .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+
+    function getUrlParams() {
+      return Object.fromEntries(new URLSearchParams(window.location.search));
+    }
+
+    async function login() {
+      const state = generateRandomString();
+      const codeVerifier = generateRandomString();
+      const codeChallenge = await sha256(codeVerifier);
+
+      localStorage.setItem("code_verifier", codeVerifier);
+
+      const url = `${authEndpoint}?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=openid%20profile&state=${state}&code_challenge=${codeChallenge}&code_challenge_method=S256`;
+      window.location = url;
+    }
+
+    async function handleRedirect() {
+      const params = getUrlParams();
+      if (params.code) {
+        const codeVerifier = localStorage.getItem("code_verifier");
+
+        const body = new URLSearchParams({
+          grant_type: "authorization_code",
+          code: params.code,
+          redirect_uri: redirectUri,
+          client_id: clientId,
+          code_verifier: codeVerifier
+        });
+
+        const resp = await fetch(tokenEndpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body
+        });
+        const data = await resp.json();
+        const idToken = data.id_token;
+
+        const payload = JSON.parse(atob(idToken.split('.')[1]));
+        const name = payload.name || payload.preferred_username;
+
+        localStorage.setItem("id_token", idToken);
+        localStorage.setItem("user_name", name);
+
+        window.history.replaceState({}, document.title, redirectUri);
+        showWelcome(name);
+      } else if (localStorage.getItem("user_name")) {
+        showWelcome(localStorage.getItem("user_name"));
+      }
+    }
+
+    function showWelcome(name) {
+      document.getElementById("loginBtn").style.display = "none";
+      document.getElementById("welcome").style.display = "block";
+      document.getElementById("name").innerText = name;
+    }
+
+    function logout() {
+      localStorage.clear();
+      document.getElementById("welcome").style.display = "none";
+      document.getElementById("loginBtn").style.display = "block";
+    }
+
+    document.getElementById("loginBtn").onclick = login;
+    document.getElementById("logoutBtn").onclick = logout;
+
+    handleRedirect();
+  </script>
+</body>
+</html>
