@@ -1,242 +1,186 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Ban Resolution Center</title>
-  <script src="https://cdn.apple-cloudkit.com/ck/2/cloudkit.js"></script>
-  <script src="https://cdn.tailwindcss.com"></script>
+<meta charset="UTF-8">
+<title>Ban Resolution Center</title>
+<script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-100 h-screen flex">
 
-  <!-- Sidebar -->
-  <aside class="w-64 bg-gray-900 text-gray-100 flex flex-col">
-    <div class="p-6 text-2xl font-bold border-b border-gray-700">
-      🚫 Ban Center
-    </div>
-    <nav class="flex-1 p-4">
-      <ul>
-        <li class="mb-4"><a href="#" class="hover:text-blue-400">Dashboard</a></li>
-      </ul>
-    </nav>
-    <div class="p-4 border-t border-gray-700 text-sm" id="sidebarUser" style="display:none;">
-      Logged in as <span id="username" class="font-semibold"></span>
-      <button id="logoutBtn" class="ml-2 text-red-400 hover:text-red-600">Logout</button>
-    </div>
-  </aside>
+<!-- Sidebar -->
+<aside class="w-64 bg-gray-900 text-gray-100 flex flex-col">
+  <div class="p-6 text-2xl font-bold border-b border-gray-700">
+    🚫 Ban Center
+  </div>
+  <nav class="flex-1 p-4">
+    <ul>
+      <li class="mb-4"><a href="#" class="hover:text-blue-400">Dashboard</a></li>
+    </ul>
+  </nav>
+  <div class="p-4 border-t border-gray-700 text-sm" id="sidebarUser" style="display:none;">
+    Logged in as <span id="username" class="font-semibold"></span>
+    <button id="logoutBtn" class="ml-2 text-red-400 hover:text-red-600">Logout</button>
+  </div>
+</aside>
 
-  <!-- Main Content -->
-  <main class="flex-1 p-10">
-    <section id="loginSection" class="mb-6">
-      <button id="loginBtn" class="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700">
-        Login with OneLogin
-      </button>
-    </section>
+<!-- Main Content -->
+<main class="flex-1 p-10">
+  <section id="loginSection" class="mb-6">
+    <button id="loginBtn" class="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700">
+      Login with OneLogin
+    </button>
+  </section>
 
-    <section id="appSection" class="hidden">
-      <h1 class="text-3xl font-bold text-gray-800 mb-4">Welcome, <span id="welcomeName"></span> 👋</h1>
-      <p class="text-gray-600 mb-6">Use the search below to manage bans.</p>
+  <section id="appSection" class="hidden">
+    <h1 class="text-3xl font-bold text-gray-800 mb-4">Welcome, <span id="welcomeName"></span> 👋</h1>
+    <p class="text-gray-600 mb-6">Use the search below to manage bans.</p>
 
-      <div class="bg-white shadow-lg rounded-2xl p-6 max-w-xl">
-        <h2 class="text-xl font-semibold mb-4">Lookup User</h2>
-        <div class="flex mb-4">
-          <input type="text" id="phoneInput" placeholder="Enter phone number"
-                 class="flex-1 border border-gray-300 rounded-l-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
-          <button onclick="lookupUser()"
-                  class="bg-blue-600 text-white px-4 py-2 rounded-r-lg hover:bg-blue-700">Search</button>
-        </div>
-        <div id="statusBox" class="hidden p-4 rounded-lg"></div>
+    <div class="bg-white shadow-lg rounded-2xl p-6 max-w-xl">
+      <h2 class="text-xl font-semibold mb-4">Lookup User</h2>
+      <div class="flex mb-4">
+        <input type="text" id="phoneInput" placeholder="Enter phone number"
+               class="flex-1 border border-gray-300 rounded-l-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <button onclick="lookupUser()"
+                class="bg-blue-600 text-white px-4 py-2 rounded-r-lg hover:bg-blue-700">Search</button>
       </div>
-    </section>
-  </main>
+      <div id="statusBox" class="hidden p-4 rounded-lg"></div>
+    </div>
+  </section>
+</main>
 
-  <script>
-    // -------------------
-    // OneLogin OIDC Setup
-    // -------------------
-    const clientId = "592e62a0-6f37-013e-0227-59f027e77355251669";
-    const issuer = "https://keyninestudios.onelogin.com/oidc/2";
-    const redirectUri = window.location.origin + window.location.pathname;
-    const authEndpoint = issuer + "/auth";
-    const tokenEndpoint = issuer + "/token";
+<script>
+const clientId = "YOUR_ONLOGIN_CLIENT_ID";
+const issuer = "https://keyninestudios.onelogin.com/oidc/2";
+const redirectUri = window.location.origin + window.location.pathname;
+const authEndpoint = issuer + "/auth";
+const tokenEndpoint = issuer + "/token";
 
-    function generateRandomString() {
-      const array = new Uint32Array(28);
-      window.crypto.getRandomValues(array);
-      return Array.from(array, dec => ('0' + dec.toString(16)).substr(-2)).join('');
-    }
+// --- OneLogin functions ---
+function generateRandomString() {
+  const array = new Uint32Array(28);
+  window.crypto.getRandomValues(array);
+  return Array.from(array, dec => ('0' + dec.toString(16)).substr(-2)).join('');
+}
 
-    async function sha256(plain) {
-      const encoder = new TextEncoder();
-      const data = encoder.encode(plain);
-      const hash = await crypto.subtle.digest('SHA-256', data);
-      return btoa(String.fromCharCode(...new Uint8Array(hash)))
-        .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-    }
+async function sha256(plain) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(plain);
+  const hash = await crypto.subtle.digest('SHA-256', data);
+  return btoa(String.fromCharCode(...new Uint8Array(hash)))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
 
-    function getUrlParams() {
-      return Object.fromEntries(new URLSearchParams(window.location.search));
-    }
+function getUrlParams() {
+  return Object.fromEntries(new URLSearchParams(window.location.search));
+}
 
-    async function login() {
-      const state = generateRandomString();
-      const codeVerifier = generateRandomString();
-      const codeChallenge = await sha256(codeVerifier);
-      localStorage.setItem("code_verifier", codeVerifier);
+async function login() {
+  const state = generateRandomString();
+  const codeVerifier = generateRandomString();
+  const codeChallenge = await sha256(codeVerifier);
+  localStorage.setItem("code_verifier", codeVerifier);
 
-      const url = `${authEndpoint}?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=openid%20profile&state=${state}&code_challenge=${codeChallenge}&code_challenge_method=S256`;
-      window.location = url;
-    }
+  const url = `${authEndpoint}?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=openid%20profile&state=${state}&code_challenge=${codeChallenge}&code_challenge_method=S256`;
+  window.location = url;
+}
 
-    async function handleRedirect() {
-      const params = getUrlParams();
-      if (params.code) {
-        const codeVerifier = localStorage.getItem("code_verifier");
-        const body = new URLSearchParams({
-          grant_type: "authorization_code",
-          code: params.code,
-          redirect_uri: redirectUri,
-          client_id: clientId,
-          code_verifier: codeVerifier
-        });
+async function handleRedirect() {
+  const params = getUrlParams();
+  if (params.code) {
+    const codeVerifier = localStorage.getItem("code_verifier");
+    const body = new URLSearchParams({
+      grant_type: "authorization_code",
+      code: params.code,
+      redirect_uri: redirectUri,
+      client_id: clientId,
+      code_verifier: codeVerifier
+    });
 
-        const resp = await fetch(tokenEndpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body
-        });
+    const resp = await fetch(tokenEndpoint, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body });
+    const data = await resp.json();
+    const payload = JSON.parse(atob(data.id_token.split('.')[1]));
+    const name = payload.name || payload.preferred_username;
 
-        if (!resp.ok) {
-          alert("Failed to exchange code for token. Check OneLogin app config.");
-          return;
-        }
+    localStorage.setItem("id_token", data.id_token);
+    localStorage.setItem("user_name", name);
+    window.history.replaceState({}, document.title, redirectUri);
+    showApp(name);
+  } else if (localStorage.getItem("user_name")) {
+    showApp(localStorage.getItem("user_name"));
+  }
+}
 
-        const data = await resp.json();
-        const idToken = data.id_token;
-        const payload = JSON.parse(atob(idToken.split('.')[1]));
-        const name = payload.name || payload.preferred_username;
+function showApp(name) {
+  document.getElementById("loginSection").style.display = "none";
+  document.getElementById("appSection").style.display = "block";
+  document.getElementById("sidebarUser").style.display = "block";
+  document.getElementById("username").innerText = name;
+  document.getElementById("welcomeName").innerText = name;
+}
 
-        localStorage.setItem("id_token", idToken);
-        localStorage.setItem("user_name", name);
-        window.history.replaceState({}, document.title, redirectUri);
+function logout() {
+  localStorage.clear();
+  document.getElementById("appSection").style.display = "none";
+  document.getElementById("sidebarUser").style.display = "none";
+  document.getElementById("loginSection").style.display = "block";
+}
 
-        showApp(name);
-      } else if (localStorage.getItem("user_name")) {
-        showApp(localStorage.getItem("user_name"));
-      }
-    }
+document.getElementById("loginBtn").onclick = login;
+document.getElementById("logoutBtn").onclick = logout;
+handleRedirect();
 
-    function showApp(name) {
-      document.getElementById("loginSection").style.display = "none";
-      document.getElementById("appSection").style.display = "block";
-      document.getElementById("sidebarUser").style.display = "block";
-      document.getElementById("username").innerText = name;
-      document.getElementById("welcomeName").innerText = name;
-    }
+// --- Serverless CloudKit calls ---
+async function lookupUser() {
+  const phone = document.getElementById("phoneInput").value.trim();
+  if (!phone) return alert("Enter phone number");
 
-    function logout() {
-      localStorage.clear();
-      document.getElementById("appSection").style.display = "none";
-      document.getElementById("sidebarUser").style.display = "none";
-      document.getElementById("loginSection").style.display = "block";
-    }
+  const resp = await fetch('/api/cloudkit', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'lookup', phone })
+  });
+  const data = await resp.json();
+  const statusBox = document.getElementById("statusBox");
+  statusBox.classList.remove("hidden");
+  statusBox.innerHTML = "";
 
-    document.getElementById("loginBtn").onclick = login;
-    document.getElementById("logoutBtn").onclick = logout;
-    handleRedirect();
+  const record = data.records?.[0];
+  if (!record) {
+    statusBox.className = "p-4 rounded-lg bg-green-100 text-green-700";
+    statusBox.innerHTML = `
+      ✅ <strong>Status:</strong> NOT BANNED
+      <div class="mt-4">
+        <button onclick="banUser('${phone}')" class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700">Ban User</button>
+      </div>`;
+  } else if (record.fields.banStatus.value === 1) {
+    statusBox.className = "p-4 rounded-lg bg-red-100 text-red-700";
+    statusBox.innerHTML = `
+      🚫 <strong>Status:</strong> BANNED<br>
+      <em>Reason:</em> ${record.fields.banReason.value}
+      <div class="mt-4">
+        <button onclick="unbanUser('${record.recordName}')" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">Unban User</button>
+      </div>`;
+  } else {
+    statusBox.className = "p-4 rounded-lg bg-yellow-100 text-yellow-700";
+    statusBox.innerHTML = `
+      ⚠️ <strong>Status:</strong> Previously Banned (Inactive)
+      <div class="mt-4">
+        <button onclick="banUser('${phone}')" class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700">Ban Again</button>
+      </div>`;
+  }
+}
 
-    // -----------------------
-    // CloudKit JS Setup
-    // -----------------------
-    const containerConfig = {
-      containers: [{
-        containerIdentifier: 'iCloud.keyninestudios.topten',
-        apiTokenAuth: { apiToken: 'ece865511ed4a5bf7b94a517280aa85ba5c8b1e7c913be1030ad17d9bf63434a' },
-        environment: 'production'
-      }]
-    };
-    CloudKit.configure(containerConfig);
-    const container = CloudKit.getDefaultContainer();
-    const database = container.publicCloudDatabase;
+async function banUser(phone) {
+  const reason = prompt("Enter ban reason:");
+  if (!reason) return;
+  await fetch('/api/cloudkit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'ban', phone, reason }) });
+  lookupUser();
+}
 
-    async function lookupUser() {
-      const phone = document.getElementById("phoneInput").value.trim();
-      if (!phone) return alert("Enter phone number");
-
-      const query = {
-        recordType: 'BannedUsers',
-        filterBy: [{
-          fieldName: 'userID',
-          comparator: 'EQUALS',
-          fieldValue: { value: `user_${phone}` }
-        }]
-      };
-
-      try {
-        const result = await database.performQuery(query);
-        const records = result.records;
-        const statusBox = document.getElementById("statusBox");
-        statusBox.classList.remove("hidden");
-        statusBox.innerHTML = "";
-
-        if (!records || records.length === 0) {
-          statusBox.className = "p-4 rounded-lg bg-green-100 text-green-700";
-          statusBox.innerHTML = `
-            ✅ <strong>Status:</strong> NOT BANNED
-            <div class="mt-4">
-              <button onclick="banUser('${phone}')" class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700">Ban User</button>
-            </div>`;
-        } else if (records[0].fields.banStatus.value === 1) {
-          statusBox.className = "p-4 rounded-lg bg-red-100 text-red-700";
-          statusBox.innerHTML = `
-            🚫 <strong>Status:</strong> BANNED<br>
-            <em>Reason:</em> ${records[0].fields.banReason.value}
-            <div class="mt-4">
-              <button onclick="unbanUser('${records[0].recordName}')" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">Unban User</button>
-            </div>`;
-        } else {
-          statusBox.className = "p-4 rounded-lg bg-yellow-100 text-yellow-700";
-          statusBox.innerHTML = `
-            ⚠️ <strong>Status:</strong> Previously Banned (Inactive)
-            <div class="mt-4">
-              <button onclick="banUser('${phone}')" class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700">Ban Again</button>
-            </div>`;
-        }
-      } catch (err) {
-        alert('Error querying CloudKit: ' + err);
-      }
-    }
-
-    async function banUser(phone) {
-      const reason = prompt("Enter ban reason:");
-      if (!reason) return;
-
-      try {
-        await database.saveRecords([{
-          recordType: 'BannedUsers',
-          fields: {
-            userID: { value: `user_${phone}` },
-            banReason: { value: reason },
-            banStatus: { value: 1 }
-          }
-        }]);
-        lookupUser();
-      } catch (err) {
-        alert('Error banning user: ' + err);
-      }
-    }
-
-    async function unbanUser(recordName) {
-      try {
-        await database.saveRecords([{
-          recordType: 'BannedUsers',
-          recordName,
-          fields: { banStatus: { value: 0 } }
-        }]);
-        lookupUser();
-      } catch (err) {
-        alert('Error unbanning user: ' + err);
-      }
-    }
-  </script>
+async function unbanUser(recordName) {
+  await fetch('/api/cloudkit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'unban', recordName }) });
+  lookupUser();
+}
+</script>
 </body>
 </html>
