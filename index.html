@@ -17,22 +17,22 @@
         <li class="mb-4"><a href="#" class="hover:text-blue-400">Dashboard</a></li>
       </ul>
     </nav>
-    <div class="p-4 border-t border-gray-700 text-sm">
-      Logged in as <span id="username" class="font-semibold">Employee</span>
+    <div class="p-4 border-t border-gray-700 text-sm" id="sidebarUser" style="display:none;">
+      Logged in as <span id="username" class="font-semibold"></span>
       <button id="logoutBtn" class="ml-2 text-red-400 hover:text-red-600">Logout</button>
     </div>
   </aside>
 
   <!-- Main Content -->
   <main class="flex-1 p-10">
-    <section id="loginSection">
+    <section id="loginSection" class="mb-6">
       <button id="loginBtn" class="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700">
         Login with OneLogin
       </button>
     </section>
 
     <section id="appSection" class="hidden">
-      <h1 class="text-3xl font-bold text-gray-800 mb-4">Welcome, <span id="welcomeName">Employee</span> 👋</h1>
+      <h1 class="text-3xl font-bold text-gray-800 mb-4">Welcome, <span id="welcomeName"></span> 👋</h1>
       <p class="text-gray-600 mb-6">Use the search below to manage bans.</p>
 
       <div class="bg-white shadow-lg rounded-2xl p-6 max-w-xl">
@@ -127,6 +127,7 @@
     function showApp(name) {
       document.getElementById("loginSection").style.display = "none";
       document.getElementById("appSection").style.display = "block";
+      document.getElementById("sidebarUser").style.display = "block";
       document.getElementById("username").innerText = name;
       document.getElementById("welcomeName").innerText = name;
     }
@@ -134,73 +135,138 @@
     function logout() {
       localStorage.clear();
       document.getElementById("appSection").style.display = "none";
+      document.getElementById("sidebarUser").style.display = "none";
       document.getElementById("loginSection").style.display = "block";
     }
 
     document.getElementById("loginBtn").onclick = login;
     document.getElementById("logoutBtn").onclick = logout;
-
     handleRedirect();
 
     // -----------------------
-    // Ban Resolution Functions
+    // CloudKit Ban Resolution
     // -----------------------
+    const container = "iCloud.keyninestudios.topten"; // e.g. "iCloud.com.example.BanCenter"
+    const apiKey = "ece865511ed4a5bf7b94a517280aa85ba5c8b1e7c913be1030ad17d9bf63434a";      // CloudKit Web Services API Key
+    const dbBase = `https://api.apple-cloudkit.com/database/1/${container}/production/public/records`;
+
+    async function queryCloudKit(userId) {
+      const resp = await fetch(`${dbBase}/query`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Apple-CloudKit-Request-KeyID": apiKey,
+          "X-Apple-CloudKit-Request-ISO8601Date": new Date().toISOString(),
+          "X-Apple-CloudKit-Request-SignatureV1": "placeholder" // optional for testing
+        },
+        body: JSON.stringify({
+          query: {
+            recordType: "BannedUsers",
+            filterBy: [{
+              fieldName: "userID",
+              comparator: "EQUALS",
+              fieldValue: { value: userId }
+            }]
+          }
+        })
+      });
+      const data = await resp.json();
+      return data.records && data.records.length > 0 ? data.records[0] : null;
+    }
+
+    async function addBanRecord(userId, reason) {
+      await fetch(`${dbBase}/modify`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Apple-CloudKit-Request-KeyID": apiKey,
+          "X-Apple-CloudKit-Request-ISO8601Date": new Date().toISOString(),
+          "X-Apple-CloudKit-Request-SignatureV1": "placeholder"
+        },
+        body: JSON.stringify({
+          operations: [{
+            operationType: "create",
+            record: {
+              recordType: "BannedUsers",
+              fields: {
+                userID: { value: userId },
+                banReason: { value: reason },
+                banStatus: { value: 1 }
+              }
+            }
+          }]
+        })
+      });
+    }
+
+    async function updateBanStatus(recordName, status) {
+      await fetch(`${dbBase}/modify`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Apple-CloudKit-Request-KeyID": apiKey,
+          "X-Apple-CloudKit-Request-ISO8601Date": new Date().toISOString(),
+          "X-Apple-CloudKit-Request-SignatureV1": "placeholder"
+        },
+        body: JSON.stringify({
+          operations: [{
+            operationType: "update",
+            record: {
+              recordName,
+              recordType: "BannedUsers",
+              fields: {
+                banStatus: { value: status }
+              }
+            }
+          }]
+        })
+      });
+    }
+
     async function lookupUser() {
       const phone = document.getElementById("phoneInput").value.trim();
       if (!phone) return alert("Please enter a phone number");
-
       const userId = `user_${phone}`;
       const statusBox = document.getElementById("statusBox");
-
-      // TODO: Replace this mock database with CloudKit fetch
-      const mockDatabase = {
-        "user_8017078254": { banStatus: 1, banReason: "Violation of policy" }
-      };
-
-      const userRecord = mockDatabase[userId];
       statusBox.classList.remove("hidden");
-      statusBox.innerHTML = "";
+      statusBox.innerHTML = "Checking...";
 
-      if (!userRecord) {
+      const record = await queryCloudKit(userId);
+
+      if (!record) {
         statusBox.className = "p-4 rounded-lg bg-green-100 text-green-700";
         statusBox.innerHTML = `
           ✅ <strong>Status:</strong> NOT BANNED
           <div class="mt-4">
-            <button onclick="banUser('${userId}')" 
-                    class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700">Ban User</button>
+            <button onclick="banUser('${userId}')" class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700">Ban User</button>
           </div>`;
-      } else if (userRecord.banStatus === 1) {
+      } else if (record.fields.banStatus.value === 1) {
         statusBox.className = "p-4 rounded-lg bg-red-100 text-red-700";
         statusBox.innerHTML = `
           🚫 <strong>Status:</strong> BANNED<br>
-          <em>Reason:</em> ${userRecord.banReason}
+          <em>Reason:</em> ${record.fields.banReason.value}
           <div class="mt-4">
-            <button onclick="unbanUser('${userId}')" 
-                    class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">Unban User</button>
+            <button onclick="unbanUser('${record.recordName}')" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">Unban User</button>
           </div>`;
       } else {
         statusBox.className = "p-4 rounded-lg bg-yellow-100 text-yellow-700";
         statusBox.innerHTML = `
           ⚠️ <strong>Status:</strong> Previously Banned (Inactive)
           <div class="mt-4">
-            <button onclick="banUser('${userId}')" 
-                    class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700">Ban Again</button>
+            <button onclick="banUser('${userId}')" class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700">Ban Again</button>
           </div>`;
       }
     }
 
-    function banUser(userId) {
+    async function banUser(userId) {
       const reason = prompt("Enter ban reason:");
       if (!reason) return;
-
-      // TODO: Insert into CloudKit
-      alert(`User ${userId} banned for: ${reason}`);
+      await addBanRecord(userId, reason);
       lookupUser();
     }
 
-    function unbanUser(userId) {
-      // TODO: Update record in CloudKit
-      alert(`User ${userId} unbanned`);
+    async function unbanUser(recordName) {
+      await updateBanStatus(recordName, 0);
       lookupUser();
     }
   </script>
