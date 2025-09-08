@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <title>Ban Resolution Center</title>
+  <script src="https://cdn.apple-cloudkit.com/ck/2/cloudkit.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-100 h-screen flex">
@@ -144,56 +145,97 @@
     handleRedirect();
 
     // -----------------------
-    // Ban Resolution Functions (via Node.js API)
+    // CloudKit JS Setup
     // -----------------------
+    const containerConfig = {
+      containers: [{
+        containerIdentifier: 'iCloud.keyninestudios.topten',
+        apiTokenAuth: { apiToken: 'ece865511ed4a5bf7b94a517280aa85ba5c8b1e7c913be1030ad17d9bf63434a' },
+        environment: 'production'
+      }]
+    };
+    CloudKit.configure(containerConfig);
+    const container = CloudKit.getDefaultContainer();
+    const database = container.publicCloudDatabase;
+
     async function lookupUser() {
       const phone = document.getElementById("phoneInput").value.trim();
       if (!phone) return alert("Enter phone number");
 
-      const res = await fetch(`/api/ban?phone=${phone}&action=lookup`);
-      const data = await res.json();
+      const query = {
+        recordType: 'BannedUsers',
+        filterBy: [{
+          fieldName: 'userID',
+          comparator: 'EQUALS',
+          fieldValue: { value: `user_${phone}` }
+        }]
+      };
 
-      const statusBox = document.getElementById("statusBox");
-      statusBox.classList.remove("hidden");
-      statusBox.innerHTML = "";
+      try {
+        const result = await database.performQuery(query);
+        const records = result.records;
+        const statusBox = document.getElementById("statusBox");
+        statusBox.classList.remove("hidden");
+        statusBox.innerHTML = "";
 
-      const record = data.records && data.records.length > 0 ? data.records[0] : null;
-
-      if (!record) {
-        statusBox.className = "p-4 rounded-lg bg-green-100 text-green-700";
-        statusBox.innerHTML = `
-          ✅ <strong>Status:</strong> NOT BANNED
-          <div class="mt-4">
-            <button onclick="banUser('${phone}')" class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700">Ban User</button>
-          </div>`;
-      } else if (record.fields.banStatus.value === 1) {
-        statusBox.className = "p-4 rounded-lg bg-red-100 text-red-700";
-        statusBox.innerHTML = `
-          🚫 <strong>Status:</strong> BANNED<br>
-          <em>Reason:</em> ${record.fields.banReason.value}
-          <div class="mt-4">
-            <button onclick="unbanUser('${record.recordName}')" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">Unban User</button>
-          </div>`;
-      } else {
-        statusBox.className = "p-4 rounded-lg bg-yellow-100 text-yellow-700";
-        statusBox.innerHTML = `
-          ⚠️ <strong>Status:</strong> Previously Banned (Inactive)
-          <div class="mt-4">
-            <button onclick="banUser('${phone}')" class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700">Ban Again</button>
-          </div>`;
+        if (!records || records.length === 0) {
+          statusBox.className = "p-4 rounded-lg bg-green-100 text-green-700";
+          statusBox.innerHTML = `
+            ✅ <strong>Status:</strong> NOT BANNED
+            <div class="mt-4">
+              <button onclick="banUser('${phone}')" class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700">Ban User</button>
+            </div>`;
+        } else if (records[0].fields.banStatus.value === 1) {
+          statusBox.className = "p-4 rounded-lg bg-red-100 text-red-700";
+          statusBox.innerHTML = `
+            🚫 <strong>Status:</strong> BANNED<br>
+            <em>Reason:</em> ${records[0].fields.banReason.value}
+            <div class="mt-4">
+              <button onclick="unbanUser('${records[0].recordName}')" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">Unban User</button>
+            </div>`;
+        } else {
+          statusBox.className = "p-4 rounded-lg bg-yellow-100 text-yellow-700";
+          statusBox.innerHTML = `
+            ⚠️ <strong>Status:</strong> Previously Banned (Inactive)
+            <div class="mt-4">
+              <button onclick="banUser('${phone}')" class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700">Ban Again</button>
+            </div>`;
+        }
+      } catch (err) {
+        alert('Error querying CloudKit: ' + err);
       }
     }
 
     async function banUser(phone) {
       const reason = prompt("Enter ban reason:");
       if (!reason) return;
-      await fetch(`/api/ban?phone=${phone}&action=ban&reason=${encodeURIComponent(reason)}`);
-      lookupUser();
+
+      try {
+        await database.saveRecords([{
+          recordType: 'BannedUsers',
+          fields: {
+            userID: { value: `user_${phone}` },
+            banReason: { value: reason },
+            banStatus: { value: 1 }
+          }
+        }]);
+        lookupUser();
+      } catch (err) {
+        alert('Error banning user: ' + err);
+      }
     }
 
     async function unbanUser(recordName) {
-      await fetch(`/api/ban?recordName=${recordName}&action=unban`);
-      lookupUser();
+      try {
+        await database.saveRecords([{
+          recordType: 'BannedUsers',
+          recordName,
+          fields: { banStatus: { value: 0 } }
+        }]);
+        lookupUser();
+      } catch (err) {
+        alert('Error unbanning user: ' + err);
+      }
     }
   </script>
 </body>
