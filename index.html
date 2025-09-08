@@ -1,18 +1,57 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>OneLogin Demo</title>
+  <meta charset="UTF-8">
+  <title>Ban Resolution Center</title>
+  <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
-  <div id="app">
-    <button id="loginBtn">Login</button>
-    <div id="welcome" style="display:none;">
-      <h1>HEY, <span id="name"></span>!</h1>
-      <button id="logoutBtn">Logout</button>
+<body class="bg-gray-100 h-screen flex">
+
+  <!-- Sidebar -->
+  <aside class="w-64 bg-gray-900 text-gray-100 flex flex-col">
+    <div class="p-6 text-2xl font-bold border-b border-gray-700">
+      🚫 Ban Center
     </div>
-  </div>
+    <nav class="flex-1 p-4">
+      <ul>
+        <li class="mb-4"><a href="#" class="hover:text-blue-400">Dashboard</a></li>
+      </ul>
+    </nav>
+    <div class="p-4 border-t border-gray-700 text-sm">
+      Logged in as <span id="username" class="font-semibold">Employee</span>
+      <button id="logoutBtn" class="ml-2 text-red-400 hover:text-red-600">Logout</button>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="flex-1 p-10">
+    <section id="loginSection">
+      <button id="loginBtn" class="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700">
+        Login with OneLogin
+      </button>
+    </section>
+
+    <section id="appSection" class="hidden">
+      <h1 class="text-3xl font-bold text-gray-800 mb-4">Welcome, <span id="welcomeName">Employee</span> 👋</h1>
+      <p class="text-gray-600 mb-6">Use the search below to manage bans.</p>
+
+      <div class="bg-white shadow-lg rounded-2xl p-6 max-w-xl">
+        <h2 class="text-xl font-semibold mb-4">Lookup User</h2>
+        <div class="flex mb-4">
+          <input type="text" id="phoneInput" placeholder="Enter phone number"
+                 class="flex-1 border border-gray-300 rounded-l-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <button onclick="lookupUser()"
+                  class="bg-blue-600 text-white px-4 py-2 rounded-r-lg hover:bg-blue-700">Search</button>
+        </div>
+        <div id="statusBox" class="hidden p-4 rounded-lg"></div>
+      </div>
+    </section>
+  </main>
 
   <script>
+    // -------------------
+    // OneLogin OIDC Setup
+    // -------------------
     const clientId = "592e62a0-6f37-013e-0227-59f027e77355251669";
     const issuer = "https://keyninestudios.onelogin.com/oidc/2";
     const redirectUri = window.location.origin + window.location.pathname;
@@ -41,7 +80,6 @@
       const state = generateRandomString();
       const codeVerifier = generateRandomString();
       const codeChallenge = await sha256(codeVerifier);
-
       localStorage.setItem("code_verifier", codeVerifier);
 
       const url = `${authEndpoint}?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=openid%20profile&state=${state}&code_challenge=${codeChallenge}&code_challenge_method=S256`;
@@ -52,7 +90,6 @@
       const params = getUrlParams();
       if (params.code) {
         const codeVerifier = localStorage.getItem("code_verifier");
-
         const body = new URLSearchParams({
           grant_type: "authorization_code",
           code: params.code,
@@ -66,38 +103,106 @@
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
           body
         });
+
+        if (!resp.ok) {
+          alert("Failed to exchange code for token. Check OneLogin app config.");
+          return;
+        }
+
         const data = await resp.json();
         const idToken = data.id_token;
-
         const payload = JSON.parse(atob(idToken.split('.')[1]));
         const name = payload.name || payload.preferred_username;
 
         localStorage.setItem("id_token", idToken);
         localStorage.setItem("user_name", name);
-
         window.history.replaceState({}, document.title, redirectUri);
-        showWelcome(name);
+
+        showApp(name);
       } else if (localStorage.getItem("user_name")) {
-        showWelcome(localStorage.getItem("user_name"));
+        showApp(localStorage.getItem("user_name"));
       }
     }
 
-    function showWelcome(name) {
-      document.getElementById("loginBtn").style.display = "none";
-      document.getElementById("welcome").style.display = "block";
-      document.getElementById("name").innerText = name;
+    function showApp(name) {
+      document.getElementById("loginSection").style.display = "none";
+      document.getElementById("appSection").style.display = "block";
+      document.getElementById("username").innerText = name;
+      document.getElementById("welcomeName").innerText = name;
     }
 
     function logout() {
       localStorage.clear();
-      document.getElementById("welcome").style.display = "none";
-      document.getElementById("loginBtn").style.display = "block";
+      document.getElementById("appSection").style.display = "none";
+      document.getElementById("loginSection").style.display = "block";
     }
 
     document.getElementById("loginBtn").onclick = login;
     document.getElementById("logoutBtn").onclick = logout;
 
     handleRedirect();
+
+    // -----------------------
+    // Ban Resolution Functions
+    // -----------------------
+    async function lookupUser() {
+      const phone = document.getElementById("phoneInput").value.trim();
+      if (!phone) return alert("Please enter a phone number");
+
+      const userId = `user_${phone}`;
+      const statusBox = document.getElementById("statusBox");
+
+      // TODO: Replace this mock database with CloudKit fetch
+      const mockDatabase = {
+        "user_8017078254": { banStatus: 1, banReason: "Violation of policy" }
+      };
+
+      const userRecord = mockDatabase[userId];
+      statusBox.classList.remove("hidden");
+      statusBox.innerHTML = "";
+
+      if (!userRecord) {
+        statusBox.className = "p-4 rounded-lg bg-green-100 text-green-700";
+        statusBox.innerHTML = `
+          ✅ <strong>Status:</strong> NOT BANNED
+          <div class="mt-4">
+            <button onclick="banUser('${userId}')" 
+                    class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700">Ban User</button>
+          </div>`;
+      } else if (userRecord.banStatus === 1) {
+        statusBox.className = "p-4 rounded-lg bg-red-100 text-red-700";
+        statusBox.innerHTML = `
+          🚫 <strong>Status:</strong> BANNED<br>
+          <em>Reason:</em> ${userRecord.banReason}
+          <div class="mt-4">
+            <button onclick="unbanUser('${userId}')" 
+                    class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">Unban User</button>
+          </div>`;
+      } else {
+        statusBox.className = "p-4 rounded-lg bg-yellow-100 text-yellow-700";
+        statusBox.innerHTML = `
+          ⚠️ <strong>Status:</strong> Previously Banned (Inactive)
+          <div class="mt-4">
+            <button onclick="banUser('${userId}')" 
+                    class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700">Ban Again</button>
+          </div>`;
+      }
+    }
+
+    function banUser(userId) {
+      const reason = prompt("Enter ban reason:");
+      if (!reason) return;
+
+      // TODO: Insert into CloudKit
+      alert(`User ${userId} banned for: ${reason}`);
+      lookupUser();
+    }
+
+    function unbanUser(userId) {
+      // TODO: Update record in CloudKit
+      alert(`User ${userId} unbanned`);
+      lookupUser();
+    }
   </script>
 </body>
 </html>
