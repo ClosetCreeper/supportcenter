@@ -144,101 +144,27 @@
     handleRedirect();
 
     // -----------------------
-    // CloudKit Ban Resolution
+    // Ban Resolution Functions (via Node.js API)
     // -----------------------
-    const container = "iCloud.keyninestudios.topten"; // e.g. "iCloud.com.example.BanCenter"
-    const apiKey = "ece865511ed4a5bf7b94a517280aa85ba5c8b1e7c913be1030ad17d9bf63434a";      // CloudKit Web Services API Key
-    const dbBase = `https://api.apple-cloudkit.com/database/1/${container}/production/public/records`;
-
-    async function queryCloudKit(userId) {
-      const resp = await fetch(`${dbBase}/query`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Apple-CloudKit-Request-KeyID": apiKey,
-          "X-Apple-CloudKit-Request-ISO8601Date": new Date().toISOString(),
-          "X-Apple-CloudKit-Request-SignatureV1": "placeholder" // optional for testing
-        },
-        body: JSON.stringify({
-          query: {
-            recordType: "BannedUsers",
-            filterBy: [{
-              fieldName: "userID",
-              comparator: "EQUALS",
-              fieldValue: { value: userId }
-            }]
-          }
-        })
-      });
-      const data = await resp.json();
-      return data.records && data.records.length > 0 ? data.records[0] : null;
-    }
-
-    async function addBanRecord(userId, reason) {
-      await fetch(`${dbBase}/modify`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Apple-CloudKit-Request-KeyID": apiKey,
-          "X-Apple-CloudKit-Request-ISO8601Date": new Date().toISOString(),
-          "X-Apple-CloudKit-Request-SignatureV1": "placeholder"
-        },
-        body: JSON.stringify({
-          operations: [{
-            operationType: "create",
-            record: {
-              recordType: "BannedUsers",
-              fields: {
-                userID: { value: userId },
-                banReason: { value: reason },
-                banStatus: { value: 1 }
-              }
-            }
-          }]
-        })
-      });
-    }
-
-    async function updateBanStatus(recordName, status) {
-      await fetch(`${dbBase}/modify`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Apple-CloudKit-Request-KeyID": apiKey,
-          "X-Apple-CloudKit-Request-ISO8601Date": new Date().toISOString(),
-          "X-Apple-CloudKit-Request-SignatureV1": "placeholder"
-        },
-        body: JSON.stringify({
-          operations: [{
-            operationType: "update",
-            record: {
-              recordName,
-              recordType: "BannedUsers",
-              fields: {
-                banStatus: { value: status }
-              }
-            }
-          }]
-        })
-      });
-    }
-
     async function lookupUser() {
       const phone = document.getElementById("phoneInput").value.trim();
-      if (!phone) return alert("Please enter a phone number");
-      const userId = `user_${phone}`;
+      if (!phone) return alert("Enter phone number");
+
+      const res = await fetch(`/api/ban?phone=${phone}&action=lookup`);
+      const data = await res.json();
+
       const statusBox = document.getElementById("statusBox");
       statusBox.classList.remove("hidden");
-      statusBox.innerHTML = "Checking...";
+      statusBox.innerHTML = "";
 
-      const record = await queryCloudKit(userId);
+      const record = data.records && data.records.length > 0 ? data.records[0] : null;
 
       if (!record) {
         statusBox.className = "p-4 rounded-lg bg-green-100 text-green-700";
         statusBox.innerHTML = `
           ✅ <strong>Status:</strong> NOT BANNED
           <div class="mt-4">
-            <button onclick="banUser('${userId}')" class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700">Ban User</button>
+            <button onclick="banUser('${phone}')" class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700">Ban User</button>
           </div>`;
       } else if (record.fields.banStatus.value === 1) {
         statusBox.className = "p-4 rounded-lg bg-red-100 text-red-700";
@@ -253,20 +179,20 @@
         statusBox.innerHTML = `
           ⚠️ <strong>Status:</strong> Previously Banned (Inactive)
           <div class="mt-4">
-            <button onclick="banUser('${userId}')" class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700">Ban Again</button>
+            <button onclick="banUser('${phone}')" class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700">Ban Again</button>
           </div>`;
       }
     }
 
-    async function banUser(userId) {
+    async function banUser(phone) {
       const reason = prompt("Enter ban reason:");
       if (!reason) return;
-      await addBanRecord(userId, reason);
+      await fetch(`/api/ban?phone=${phone}&action=ban&reason=${encodeURIComponent(reason)}`);
       lookupUser();
     }
 
     async function unbanUser(recordName) {
-      await updateBanStatus(recordName, 0);
+      await fetch(`/api/ban?recordName=${recordName}&action=unban`);
       lookupUser();
     }
   </script>
