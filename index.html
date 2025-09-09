@@ -10,67 +10,71 @@
 </div>
 
 <script>
-  async function callCloudKit(action, phone, reason) {
-    const resp = await fetch('/api/cloudkit', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, phoneNumber: phone, reason })
-    });
+async function callCloudKit(action, phone, reason) {
+  const resp = await fetch('/api/cloudkit', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, phoneNumber: phone, reason })
+  });
+  try {
     return await resp.json();
+  } catch(e) {
+    const text = await resp.text();
+    console.log('Raw response:', text);
+    return { error: 'Failed to parse JSON', raw: text };
   }
+}
 
-  async function lookupUser() {
-    const phone = document.getElementById('phone').value.trim();
-    const resultDiv = document.getElementById('result');
-    const data = await callCloudKit('lookup', phone);
+async function lookupUser() {
+  const phone = document.getElementById('phone').value.trim();
+  const resultDiv = document.getElementById('result');
+  const data = await callCloudKit('lookup', phone);
 
-    if (data.records && data.records.length > 0) {
-      resultDiv.innerHTML = `User banned. <button onclick="unban('${phone}')">Unban</button>`;
-    } else {
-      resultDiv.innerHTML = `User NOT banned. <button onclick="ban('${phone}')">Ban</button>`;
-    }
+  if (data.records && data.records.length > 0) {
+    resultDiv.innerHTML = `User banned. <button onclick="unban('${phone}')">Unban</button>`;
+  } else {
+    resultDiv.innerHTML = `User NOT banned. <button onclick="ban('${phone}')">Ban</button>`;
   }
+}
 
-  async function ban(phone) {
-    const reason = prompt("Enter ban reason:");
-    if (!reason) return;
-    const data = await callCloudKit('ban', phone, reason);
-    console.log(data);
-    alert("User banned!");
-  }
+async function ban(phone) {
+  const reason = prompt("Enter ban reason:");
+  if (!reason) return;
+  const data = await callCloudKit('ban', phone, reason);
+  console.log(data);
+  alert("User banned!");
+}
 
-  async function unban(phone) {
-    const data = await callCloudKit('unban', phone);
-    console.log(data);
-    alert("User unbanned!");
-  }
+async function unban(phone) {
+  const data = await callCloudKit('unban', phone);
+  console.log(data);
+  alert("User unbanned!");
+}
 
-  function showWelcome(name) {
-    document.getElementById('loginBtn').style.display = 'none';
-    document.getElementById('welcome').style.display = 'block';
-    document.getElementById('name').innerText = name;
-  }
+function showWelcome(name) {
+  document.getElementById('loginBtn').style.display = 'none';
+  document.getElementById('welcome').style.display = 'block';
+  document.getElementById('name').innerText = name;
+}
 
-  function logout() {
-    localStorage.clear();
-    document.getElementById('welcome').style.display = 'none';
-    document.getElementById('loginBtn').style.display = 'block';
-  }
+function logout() {
+  localStorage.clear();
+  document.getElementById('welcome').style.display = 'none';
+  document.getElementById('loginBtn').style.display = 'block';
+}
 
-  // TODO: Add OneLogin login here
-  document.getElementById('loginBtn').onclick = () => {
-    // perform OneLogin OAuth and then:
-    const fakeName = "Employee"; // Replace with real OneLogin name
-    localStorage.setItem("user_name", fakeName);
-    showWelcome(fakeName);
-  }
+// Placeholder for OneLogin
+document.getElementById('loginBtn').onclick = () => {
+  const fakeName = "Employee";
+  localStorage.setItem("user_name", fakeName);
+  showWelcome(fakeName);
+};
 
-  document.getElementById('logoutBtn').onclick = logout;
+document.getElementById('logoutBtn').onclick = logout;
 
-  // If already logged in
-  if (localStorage.getItem("user_name")) {
-    showWelcome(localStorage.getItem("user_name"));
-  }
+if (localStorage.getItem("user_name")) {
+  showWelcome(localStorage.getItem("user_name"));
+}
 
-  document.getElementById('lookupBtn').onclick = lookupUser;
+document.getElementById('lookupBtn').onclick = lookupUser;
 </script>
