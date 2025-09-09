@@ -1,8 +1,9 @@
 <div id="app">
   <button id="loginBtn">Login via OneLogin</button>
+
   <div id="welcome" style="display:none;">
     <h1>HEY, <span id="name"></span>!</h1>
-    <input type="text" id="phone" placeholder="Phone Number"/>
+    <input type="text" id="phone" placeholder="User Phone Number"/>
     <button id="lookupBtn">Lookup</button>
     <div id="result"></div>
     <button id="logoutBtn">Logout</button>
@@ -16,19 +17,14 @@ async function callCloudKit(action, phone, reason) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action, phoneNumber: phone, reason })
   });
-  try {
-    return await resp.json();
-  } catch(e) {
-    const text = await resp.text();
-    console.log('Raw response:', text);
-    return { error: 'Failed to parse JSON', raw: text };
-  }
+  try { return await resp.json(); }
+  catch(e) { const text = await resp.text(); return { error:'Failed JSON parse', raw:text }; }
 }
 
 async function lookupUser() {
   const phone = document.getElementById('phone').value.trim();
-  const resultDiv = document.getElementById('result');
   const data = await callCloudKit('lookup', phone);
+  const resultDiv = document.getElementById('result');
 
   if (data.records && data.records.length > 0) {
     resultDiv.innerHTML = `User banned. <button onclick="unban('${phone}')">Unban</button>`;
@@ -40,14 +36,12 @@ async function lookupUser() {
 async function ban(phone) {
   const reason = prompt("Enter ban reason:");
   if (!reason) return;
-  const data = await callCloudKit('ban', phone, reason);
-  console.log(data);
+  await callCloudKit('ban', phone, reason);
   alert("User banned!");
 }
 
 async function unban(phone) {
-  const data = await callCloudKit('unban', phone);
-  console.log(data);
+  await callCloudKit('unban', phone);
   alert("User unbanned!");
 }
 
@@ -63,9 +57,9 @@ function logout() {
   document.getElementById('loginBtn').style.display = 'block';
 }
 
-// Placeholder for OneLogin
+// Placeholder OneLogin login flow
 document.getElementById('loginBtn').onclick = () => {
-  const fakeName = "Employee";
+  const fakeName = "Employee"; // Replace with real OneLogin info
   localStorage.setItem("user_name", fakeName);
   showWelcome(fakeName);
 };
