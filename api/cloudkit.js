@@ -1,20 +1,18 @@
 import jwt from "jsonwebtoken";
 import fetch from "node-fetch";
 
-const keyId = process.env.CLOUDKIT_KEY_ID;
-const teamId = process.env.CLOUDKIT_TEAM_ID;
-const container = process.env.CLOUDKIT_CONTAINER;
-const privateKey = process.env.CLOUDKIT_PRIVATE_KEY;
+const keyId = process.env.CLOUDKIT_KEY_ID;           // CloudKit Key ID
+const teamId = process.env.CLOUDKIT_TEAM_ID;         // Apple Developer Team ID
+const container = process.env.CLOUDKIT_CONTAINER;   // e.g. iCloud.keyninestudios.topten
+const privateKey = process.env.CLOUDKIT_PRIVATE_KEY.replace(/\\n/g, '\n'); // Private key stored safely in Vercel
 
 export default async function handler(req, res) {
   try {
     const { action, phoneNumber, reason } = req.body;
 
-    if (!phoneNumber) {
-      return res.status(400).json({ error: "Missing phoneNumber" });
-    }
+    if (!phoneNumber) return res.status(400).json({ error: "Missing phoneNumber" });
 
-    // Generate JWT
+    // Generate JWT for CloudKit server-to-server auth
     const now = Math.floor(Date.now() / 1000);
     const payload = {
       iss: teamId,
@@ -24,17 +22,14 @@ export default async function handler(req, res) {
       sub: container
     };
 
-    const token = jwt.sign(payload, privateKey, {
-      algorithm: "ES256",
-      keyid: keyId
-    });
+    const token = jwt.sign(payload, privateKey, { algorithm: "ES256", keyid: keyId });
 
-    const url = `https://api.apple-cloudkit.com/database/1/${container}/production/public/records/query`;
     const userID = `user_${phoneNumber}`;
-
     let ckPayload;
+    let url;
 
     if (action === "lookup") {
+      url = `https://api.apple-cloudkit.com/database/1/${container}/production/public/records/query`;
       ckPayload = {
         recordType: "BannedUsers",
         filterBy: [
@@ -42,7 +37,8 @@ export default async function handler(req, res) {
         ]
       };
     } else if (action === "ban") {
-      if (!reason) return res.status(400).json({ error: "Missing ban reason" });
+      if (!reason) return res.status(400).json({ error: "Missing reason" });
+      url = `https://api.apple-cloudkit.com/database/1/${container}/production/public/records/modify`;
       ckPayload = {
         operations: [
           {
@@ -59,6 +55,7 @@ export default async function handler(req, res) {
         ]
       };
     } else if (action === "unban") {
+      url = `https://api.apple-cloudkit.com/database/1/${container}/production/public/records/modify`;
       ckPayload = {
         operations: [
           {
@@ -87,13 +84,11 @@ export default async function handler(req, res) {
     });
 
     let data;
-    try {
-      data = await response.json();
-    } catch (err) {
-      data = { raw: await response.text() };
-    }
+    try { data = await response.json(); }
+    catch (err) { data = { raw: await response.text() }; }
 
     res.status(response.status).json(data);
+
   } catch (err) {
     console.error("Server error:", err);
     res.status(500).json({ error: err.message });
