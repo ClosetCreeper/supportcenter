@@ -1,10 +1,10 @@
 import jwt from "jsonwebtoken";
 import fetch from "node-fetch";
 
-const keyId = process.env.CLOUDKIT_KEY_ID;           // CloudKit Key ID
-const teamId = process.env.CLOUDKIT_TEAM_ID;         // Apple Developer Team ID
-const container = process.env.CLOUDKIT_CONTAINER;   // e.g. iCloud.keyninestudios.topten
-const privateKey = process.env.CLOUDKIT_PRIVATE_KEY.replace(/\\n/g, '\n'); // Private key stored safely in Vercel
+const keyId = process.env.CLOUDKIT_KEY_ID;
+const teamId = process.env.CLOUDKIT_TEAM_ID;
+const container = process.env.CLOUDKIT_CONTAINER;
+const privateKey = process.env.CLOUDKIT_PRIVATE_KEY.replace(/\\n/g, '\n');
 
 export default async function handler(req, res) {
   try {
@@ -12,7 +12,7 @@ export default async function handler(req, res) {
 
     if (!phoneNumber) return res.status(400).json({ error: "Missing phoneNumber" });
 
-    // Generate JWT for CloudKit server-to-server auth
+    // Generate JWT
     const now = Math.floor(Date.now() / 1000);
     const payload = {
       iss: teamId,
@@ -83,9 +83,11 @@ export default async function handler(req, res) {
       body: JSON.stringify(ckPayload)
     });
 
+    // Read body once
+    const text = await response.text();
     let data;
-    try { data = await response.json(); }
-    catch (err) { data = { raw: await response.text() }; }
+    try { data = JSON.parse(text); } 
+    catch (err) { data = { raw: text }; }
 
     res.status(response.status).json(data);
 
