@@ -1,85 +1,103 @@
-import crypto from 'crypto';
-import fetch from 'node-fetch';
+import jwt from "jsonwebtoken";
+import fetch from "node-fetch";
 
-const CONTAINER = process.env.CLOUDKIT_CONTAINER;
-const ENV = process.env.CLOUDKIT_ENVIRONMENT;
-const KEY_ID = process.env.CLOUDKIT_KEY_ID;
-const PRIVATE_KEY = process.env.CLOUDKIT_PRIVATE_KEY;
-
-// Create signature headers
-function signRequest(body) {
-  const timestamp = new Date().toISOString();
-  const data = Buffer.from(JSON.stringify(body));
-
-  const sign = crypto.createSign('sha256');
-  sign.update(data);
-  sign.end();
-
-  const signature = sign.sign(PRIVATE_KEY, 'base64');
-
-  return {
-    'X-Apple-CloudKit-Request-KeyID': KEY_ID,
-    'X-Apple-CloudKit-Request-ISO8601Date': timestamp,
-    'X-Apple-CloudKit-Request-SignatureV1': signature,
-    'Content-Type': 'application/json'
-  };
-}
+const keyId = process.env.CLOUDKIT_KEY_ID;           // The Key ID from CloudKit
+const teamId = process.env.CLOUDKIT_TEAM_ID;         // Your Apple Developer Team ID
+const container = process.env.CLOUDKIT_CONTAINER;   // e.g. iCloud.keyninestudios.topten
+const privateKey = process.env.CLOUDKIT_PRIVATE_KEY; // Your PEM private key, with \n for line breaks
 
 export default async function handler(req, res) {
-  const { action, phone, reason, recordName } = req.body;
-
-  if (!action) return res.status(400).json({ error: 'Missing action' });
-
   try {
-    let body;
-    let url = `https://api.apple-cloudkit.com/database/1/${CONTAINER}/${ENV}/public/records`;
+    const { action, phoneNumber, reason } = req.body;
 
-    if (action === 'lookup') {
-      url += '/query';
-      body = {
-        recordType: 'BannedUsers',
-        filterBy: [{
-          fieldName: 'userID',
-          comparator: 'EQUALS',
-          fieldValue: { value: `user_${phone}` }
-        }]
-      };
-    } else if (action === 'ban') {
-      url += '/modify';
-      body = {
-        records: [{
-          recordType: 'BannedUsers',
-          fields: {
-            userID: { value: `user_${phone}` },
-            banReason: { value: reason },
-            banStatus: { value: 1 }
-          }
-        }]
-      };
-    } else if (action === 'unban') {
-      url += '/modify';
-      body = {
-        records: [{
-          recordName,
-          fields: { banStatus: { value: 0 } }
-        }]
-      };
-    } else {
-      return res.status(400).json({ error: 'Invalid action' });
+    if (!phoneNumber) {
+      return res.status(400).json({ error: "Missing phoneNumber" });
     }
 
-    const headers = signRequest(body);
-    const response = await fetch(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body)
+    // Generate JWT for CloudKit server-to-server authentication
+    const now = Math.floor(Date.now() / 1000);
+    const payload = {
+      iss: teamId,
+      iat: now,
+      exp: now + 3600,   // 1 hour
+      aud: "https://api.apple-cloudkit.com",
+      sub: container
+    };
+
+    const token = jwt.sign(payload, privateKey, {
+      algorithm: "ES256",
+      keyid: keyId
     });
 
-    const data = await response.json();
-    res.status(200).json(data);
+    // Construct CloudKit request
+    const url = `https://api.apple-cloudkit.com/database/1/${container}/production/public/records/query`;
+
+    // Determine userID format
+    const userID = `user_${phoneNumber}`;
+
+    let ckPayload;
+
+    if (action === "lookup") {
+      ckPayload = {
+        recordType: "BannedUsers",
+        filterBy: [{ fieldName: "userID", comparator: "EQUALS", fieldValue: { value: userID } }]
+      };
+    } else if (action === "ban") {
+      if (!reason) return res.status(400).json({ error: "Missing ban reason" });
+      ckPayload = {
+        operations: [
+          {
+            operationType: "create",
+            record: {
+              recordType: "BannedUsers",
+              fields: {
+                userID: { value: userID },
+                banReason: { value: reason },
+                banStatus: { value: 1 }
+              }
+            }
+          }
+        ]
+      };
+    } else if (action === "unban") {
+      ckPayload = {
+        operations: [
+          {
+            operationType: "update",
+            record: {
+              recordType: "BannedUsers",
+              recordName: userID,
+              fields: { banStatus: { value: 0 } }
+            }
+          }
+        ]
+      };
+    } else {
+      return res.status(400).json({ error: "Invalid action" });
+    }
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Apple-CloudKit-Request-KeyID": keyId,
+        "X-Apple-CloudKit-Request-ISO8601Date": new Date().toISOString(),
+        "Authorization": `Bearer ${token}`
+      },
+      body: JSON.stringify(ckPayload)
+    });
+
+    let data;
+    try {
+      data = await response.json();
+    } catch (err) {
+      data = { raw: await response.text() };
+    }
+
+    res.status(response.status).json(data);
 
   } catch (err) {
-    console.error(err);
+    console.error("Server error:", err);
     res.status(500).json({ error: err.message });
   }
 }
